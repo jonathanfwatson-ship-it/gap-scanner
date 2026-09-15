@@ -1,0 +1,41 @@
+# Runs the scorecard twice a day on weekdays: records the morning list, then grades it after the close.
+# GitHub's clock is UTC, so each job is listed twice to cover daylight time and standard time;
+# scorecard.py checks the New York time and quietly skips the run that lands at the wrong hour.
+name: Scorecard
+
+on:
+  schedule:
+    - cron: "5 13 * * 1-5"    # 9:05 AM ET (daylight time)
+    - cron: "5 14 * * 1-5"    # 9:05 AM ET (standard time)
+    - cron: "20 20 * * 1-5"   # 4:20 PM ET (daylight time)
+    - cron: "20 21 * * 1-5"   # 4:20 PM ET (standard time)
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: pip install yfinance pandas requests
+
+      - name: Record or grade
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python scorecard.py auto
+
+      - name: Save results back to the repository
+        run: |
+          git config user.name "scorecard-bot"
+          git config user.email "scorecard-bot@users.noreply.github.com"
+          git add data/scorecard.csv
+          git diff --cached --quiet || git commit -m "Scorecard update $(date -u +%Y-%m-%d)"
+          git push
